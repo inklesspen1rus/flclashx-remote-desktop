@@ -4,4 +4,4 @@ if [ "$VNC_PASSWORD" ]; then
     sed -i "s/^\(command.*x11vnc.*\)$/\1 -passwd '$VNC_PASSWORD'/" /etc/supervisord.conf
 fi
 
-/usr/bin/supervisord -c /etc/supervisord.conf
+dbus-run-session /usr/bin/supervisord -c /etc/supervisord.conf

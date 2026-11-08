@@ -1,15 +1,21 @@
-FROM alpine:edge
+FROM debian:trixie-slim
+
+# Опция для apt, чтобы не очищать кэш автоматически
+RUN rm -f /etc/apt/apt.conf.d/docker-clean && \
+    echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
 
 # Install all packages + websockify + noVNC in a single layer, then clean up
-RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/apk/repositories \
-    && apk add --no-cache \
-        openssl xvfb x11vnc fluxbox supervisor xterm \
-        firefox xrdp wqy-zenhei \
-        py3-pip \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    --mount=type=bind,source=pkgs,target=/pkgs \
+    DEBIAN_FRONTEND=noninteractive apt update && apt install -y --no-install-recommends \
+        openssl xvfb x11vnc fluxbox supervisor xterm wget gpg \
+        ttf-wqy-zenhei \
+        python3-pip \
     # Install websockify without optional deps (numpy/jwcrypto/redis not needed for VNC proxy)
     && pip install --no-cache-dir --break-system-packages --no-deps websockify \
     # Remove pip after install (not needed at runtime)
-    && apk del py3-pip \
+    && apt purge python3-pip -y \
     && rm -rf /usr/lib/python3.*/ensurepip \
     # Clean Python bytecode cache
     && find /usr/lib/python3.* -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null; true \
@@ -43,11 +49,17 @@ RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/apk/reposit
              /usr/share/novnc/karma.conf.js \
              /usr/share/novnc/po \
              /usr/share/novnc/utils \
-    # Clean apk cache, docs, and temp files
+    # Install firefox
+    && install -d -m 0755 /etc/apt/keyrings \
+    && wget -q https://packages.mozilla.org/apt/repo-signing-key.gpg -O- > /etc/apt/keyrings/packages.mozilla.org.asc \
+    && DEBIAN_FRONTEND=noninteractive apt install -y --no-install-recommends xdg-desktop-portal-gtk libsecret-1-0 ayatana-indicator-common ayatana-indicator-application libegl1 libgles2 \
+    && dpkg -i /pkgs/FlClashX-linux-amd64.deb \
+    # Clean docs, and temp files
     && rm -rf /var/cache/apk/* /tmp/* \
               /usr/share/gtk-doc \
               /usr/share/man \
-              /usr/share/doc
+              /usr/share/doc \
+    && rm -rf /var/lib/apt/lists/*
 
 ADD supervisord.conf /etc/supervisord.conf
 ADD xrdp.ini /etc/xrdp/xrdp.ini
@@ -59,6 +71,6 @@ RUN chmod +x /entry.sh
 ENV DISPLAY=:0
 ENV RESOLUTION=1024x768
 
-EXPOSE 5901 6901 3389
+EXPOSE 6901 7890
 
 ENTRYPOINT ["/entry.sh"]
